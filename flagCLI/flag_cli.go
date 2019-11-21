@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 )
 
 var name = flag.String("name", "World", "A name to say hello to.")
@@ -20,4 +21,6 @@ func main() {
 	} else {
 		fmt.Println("Hella %s!\n", *name)
 	}
+	//config environment variables
+	fmt.Println(os.Getenv("GOPATH"))
 }
