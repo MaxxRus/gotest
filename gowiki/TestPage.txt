@@ -1,0 +1,90 @@
+     1  // Copyright 2010 The Go Authors. All rights reserved.
+     2  // Use of this source code is governed by a BSD-style
+     3  // license that can be found in the LICENSE file.
+     4  
+     5  package main
+     6  
+     7  import (
+     8  	"html/template"
+     9  	"io/ioutil"
+    10  	"log"
+    11  	"net/http"
+    12  	"regexp"
+    13  )
+    14  
+    15  type Page struct {
+    16  	Title string
+    17  	Body  []byte
+    18  }
+    19  
+    20  func (p *Page) save() error {
+    21  	filename := p.Title + ".txt"
+    22  	return ioutil.WriteFile(filename, p.Body, 0600)
+    23  }
+    24  
+    25  func loadPage(title string) (*Page, error) {
+    26  	filename := title + ".txt"
+    27  	body, err := ioutil.ReadFile(filename)
+    28  	if err != nil {
+    29  		return nil, err
+    30  	}
+    31  	return &Page{Title: title, Body: body}, nil
+    32  }
+    33  
+    34  func viewHandler(w http.ResponseWriter, r *http.Request, title string) {
+    35  	p, err := loadPage(title)
+    36  	if err != nil {
+    37  		http.Redirect(w, r, "/edit/"+title, http.StatusFound)
+    38  		return
+    39  	}
+    40  	renderTemplate(w, "view", p)
+    41  }
+    42  
+    43  func editHandler(w http.ResponseWriter, r *http.Request, title string) {
+    44  	p, err := loadPage(title)
+    45  	if err != nil {
+    46  		p = &Page{Title: title}
+    47  	}
+    48  	renderTemplate(w, "edit", p)
+    49  }
+    50  
+    51  func saveHandler(w http.ResponseWriter, r *http.Request, title string) {
+    52  	body := r.FormValue("body")
+    53  	p := &Page{Title: title, Body: []byte(body)}
+    54  	err := p.save()
+    55  	if err != nil {
+    56  		http.Error(w, err.Error(), http.StatusInternalServerError)
+    57  		return
+    58  	}
+    59  	http.Redirect(w, r, "/view/"+title, http.StatusFound)
+    60  }
+    61  
+    62  var templates = template.Must(template.ParseFiles("edit.html", "view.html"))
+    63  
+    64  func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
+    65  	err := templates.ExecuteTemplate(w, tmpl+".html", p)
+    66  	if err != nil {
+    67  		http.Error(w, err.Error(), http.StatusInternalServerError)
+    68  	}
+    69  }
+    70  
+    71  var validPath = regexp.MustCompile("^/(edit|save|view)/([a-zA-Z0-9]+)$")
+    72  
+    73  func makeHandler(fn func(http.ResponseWriter, *http.Request, string)) http.HandlerFunc {
+    74  	return func(w http.ResponseWriter, r *http.Request) {
+    75  		m := validPath.FindStringSubmatch(r.URL.Path)
+    76  		if m == nil {
+    77  			http.NotFound(w, r)
+    78  			return
+    79  		}
+    80  		fn(w, r, m[2])
+    81  	}
+    82  }
+    83  
+    84  func main() {
+    85  	http.HandleFunc("/view/", makeHandler(viewHandler))
+    86  	http.HandleFunc("/edit/", makeHandler(editHandler))
+    87  	http.HandleFunc("/save/", makeHandler(saveHandler))
+    88  
+    89  	log.Fatal(http.ListenAndServe(":8080", nil))
+    90  }

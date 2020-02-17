@@ -2,40 +2,58 @@ package main
 
 import (
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
-	"strings"
+	"os"
+	"path/filepath"
+	"regexp"
 )
 
-func sayhelloName(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()       // parse arguments, you have to call this by yourself
-	fmt.Println(r.Form) // print form information in server side
-	fmt.Println("path", r.URL.Path)
-	fmt.Println("scheme", r.URL.Scheme)
-	fmt.Println(r.Form["url_long"])
-	for k, v := range r.Form {
-		fmt.Println("key:", k)
-		fmt.Println("val:", strings.Join(v, ""))
+func hello(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.Error(w, "404 not found.", http.StatusNotFound)
+		return
 	}
-	fmt.Fprintf(w, "Hello astaxie!") // send data to client side
-}
 
-func login(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("method:", r.Method) //get request method
-	if r.Method == "GET" {
-		t, _ := template.ParseFiles("login.html")
-		t.Execute(w, nil)
-	} else {
-		r.ParseForm()
-		// logic part of log in
-		fmt.Println("username:", r.Form["username"])
-		fmt.Println("password:", r.Form["password"])
+	switch r.Method {
+	case "GET":
+		http.ServeFile(w, r, "form.html")
+	case "POST":
+		// Call ParseForm() to parse the raw query and update r.PostForm and r.Form.
+		if err := r.ParseForm(); err != nil {
+			fmt.Fprintf(w, "ParseForm() err: %v", err)
+			return
+		}
+		number := r.FormValue("number")
+		//fmt.Fprintf(w, "Number = %s\n", number)
+
+		match := string(number)
+
+		err := filepath.Walk("/var/call/",
+			func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+				test, _ := regexp.MatchString("^.*"+match+".*", path)
+				if test {
+					fmt.Fprintf(w, "Name file is = %s\n", path)
+				}
+
+				return nil
+			})
+		if err != nil {
+			log.Println(err)
+		}
+
+	default:
+		fmt.Fprintf(w, "Sorry, only GET and POST methods are supported.")
 	}
 }
 
 func main() {
-	http.HandleFunc("/", sayhelloName) // set router
-	http.HandleFunc("/login", login)
-	log.Fatal(http.ListenAndServe(":8090", nil))
+	http.HandleFunc("/", hello)
+
+	if err := http.ListenAndServe(":8090", nil); err != nil {
+		log.Fatal(err)
+	}
 }
